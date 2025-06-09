@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+def calculate_password_from_uid(uid_string):
+    uid_clean = uid_string.replace(" ", "").upper()
+    
+    if len(uid_clean) != 14:
+        raise ValueError("UID must be exactly 7 bytes (14 hex characters)")
+    
+    try:
+        uid_bytes = bytes.fromhex(uid_clean)
+    except ValueError:
+        raise ValueError("Invalid hex characters in UID")
+    
+    pwd = []
+    pwd.append(uid_bytes[1] ^ uid_bytes[3] ^ 0xAA)
+    pwd.append(uid_bytes[2] ^ uid_bytes[4] ^ 0x55)
+    pwd.append(uid_bytes[3] ^ uid_bytes[5] ^ 0xAA)
+    pwd.append(uid_bytes[4] ^ uid_bytes[6] ^ 0x55)
+    
+    pwd_string = ' '.join('{:02X}'.format(byte) for byte in pwd)
+    
+    return pwd_string
+
+def format_uid(uid_string):
+    uid_clean = uid_string.replace(" ", "").upper()
+    return ' '.join(uid_clean[i:i+2] for i in range(0, len(uid_clean), 2))
+
+def main():
+    print("Amiibo UID to Password Converter")
+    print("=" * 35)
+    print("Enter UID as 7 bytes (14 hex characters)")
+    print("Examples: '04A3B2C1D4E5F6' or '04 A3 B2 C1 D4 E5 F6'")
+    print()
+    
+    while True:
+        try:
+            uid_input = input("Enter UID (or 'quit' to exit): ").strip()
+            
+            if uid_input.lower() in ['quit', 'q', 'exit']:
+                print("Goodbye!")
+                break
+            
+            if not uid_input:
+                print("Please enter a UID.")
+                continue
+            
+            password = calculate_password_from_uid(uid_input)
+            formatted_uid = format_uid(uid_input)
+            
+            print()
+            print("Results:")
+            print(f"UID:      {formatted_uid}")
+            print(f"Password: {password}")
+            print()
+            
+        except ValueError as e:
+            print(f"Error: {e}")
+            print("Please try again with a valid 7-byte UID.")
+            print()
+        except KeyboardInterrupt:
+            print("\nGoodbye!")
+            break
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            print()
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,37 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+def calculate_bcc0(sn0, sn1, sn2, ct=0x88):
+    """Calculate BCC0 from CT, SN0, SN1, SN2"""
+    return ct ^ sn0 ^ sn1 ^ sn2
+
+def calculate_bcc1(sn3, sn4, sn5, sn6):
+    """Calculate BCC1 from SN3, SN4, SN5, SN6"""
+    return sn3 ^ sn4 ^ sn5 ^ sn6
+
+def parse_uid_to_serial_numbers(uid_string):
+    """Parse 7-byte UID into individual serial number bytes"""
+    uid_clean = uid_string.replace(" ", "").upper()
+    
+    if len(uid_clean) != 14:
+        raise ValueError("UID must be exactly 7 bytes (14 hex characters)")
+    
+    try:
+        uid_bytes = bytes.fromhex(uid_clean)
+    except ValueError:
+        raise ValueError("Invalid hex characters in UID")
+    
+    # UID format: SN0 SN1 SN2 SN3 SN4 SN5 SN6
+    sn0 = uid_bytes[0]  # First byte
+    sn1 = uid_bytes[1]  # Second byte  
+    sn2 = uid_bytes[2]  # Third byte
+    sn3 = uid_bytes[3]  # Fourth byte
+    sn4 = uid_bytes[4]  # Fifth byte
+    sn5 = uid_bytes[5]  # Sixth byte
+    sn6 = uid_bytes[6]  # Seventh byte
+    
+    return sn0, sn1, sn2, sn3, sn4, sn5, sn6
+
 def calculate_password_from_uid(uid_string):
     uid_clean = uid_string.replace(" ", "").upper()
     
@@ -12,25 +43,44 @@ def calculate_password_from_uid(uid_string):
     except ValueError:
         raise ValueError("Invalid hex characters in UID")
     
+    # Parse serial numbers from UID
+    sn0, sn1, sn2, sn3, sn4, sn5, sn6 = parse_uid_to_serial_numbers(uid_string)
+    
+    # Calculate BCC0 and BCC1
+    ct = 0x88  # Cascade Tag for NTAG215
+    bcc0 = calculate_bcc0(sn0, sn1, sn2, ct)
+    bcc1 = calculate_bcc1(sn3, sn4, sn5, sn6)
+    
+    # Calculate password using the standard formula
     pwd = []
-    pwd.append(uid_bytes[1] ^ uid_bytes[3] ^ 0xAA)
-    pwd.append(uid_bytes[2] ^ uid_bytes[4] ^ 0x55)
-    pwd.append(uid_bytes[3] ^ uid_bytes[5] ^ 0xAA)
-    pwd.append(uid_bytes[4] ^ uid_bytes[6] ^ 0x55)
+    pwd.append(sn1 ^ sn3 ^ 0xAA)  # SN1 ^ SN3 ^ 0xAA
+    pwd.append(sn2 ^ sn4 ^ 0x55)  # SN2 ^ SN4 ^ 0x55
+    pwd.append(sn3 ^ sn5 ^ 0xAA)  # SN3 ^ SN5 ^ 0xAA
+    pwd.append(sn4 ^ sn6 ^ 0x55)  # SN4 ^ SN6 ^ 0x55
     
     pwd_string = ' '.join('{:02X}'.format(byte) for byte in pwd)
     
-    return pwd_string
+    return pwd_string, bcc0, bcc1, (sn0, sn1, sn2, sn3, sn4, sn5, sn6)
 
 def format_uid(uid_string):
     uid_clean = uid_string.replace(" ", "").upper()
     return ' '.join(uid_clean[i:i+2] for i in range(0, len(uid_clean), 2))
 
+def show_ntag215_structure(sn_bytes, bcc0, bcc1):
+    """Show the NTAG215 page structure"""
+    sn0, sn1, sn2, sn3, sn4, sn5, sn6 = sn_bytes
+    
+    print("NTAG215 Structure:")
+    print(f"Page 0: SN0 SN1 SN2 BCC0 = {sn0:02X} {sn1:02X} {sn2:02X} {bcc0:02X}")
+    print(f"Page 1: SN3 SN4 SN5 SN6  = {sn3:02X} {sn4:02X} {sn5:02X} {sn6:02X}")
+    print(f"Page 2: BCC1 INT LCK LCK = {bcc1:02X} ?? ?? ??")
+
 def main():
-    print("Amiibo UID to Password Converter")
-    print("=" * 35)
+    print("Amiibo UID to Password Converter (NTAG215 Structure)")
+    print("=" * 55)
     print("Enter UID as 7 bytes (14 hex characters)")
-    print("Examples: '04A3B2C1D4E5F6' or '04 A3 B2 C1 D4 E5 F6'")
+    print("Format: SN0 SN1 SN2 SN3 SN4 SN5 SN6")
+    print("Examples: '04E50489 5D4080' or '04 E5 04 89 5D 40 80'")
     print()
     
     while True:
@@ -45,13 +95,33 @@ def main():
                 print("Please enter a UID.")
                 continue
             
-            password = calculate_password_from_uid(uid_input)
+            password, bcc0, bcc1, sn_bytes = calculate_password_from_uid(uid_input)
             formatted_uid = format_uid(uid_input)
+            sn0, sn1, sn2, sn3, sn4, sn5, sn6 = sn_bytes
+            ct = 0x88
             
             print()
             print("Results:")
             print(f"UID:      {formatted_uid}")
             print(f"Password: {password}")
+            print()
+            
+            # Show NTAG215 structure
+            show_ntag215_structure(sn_bytes, bcc0, bcc1)
+            print()
+            
+            # Show BCC calculations
+            print("BCC Calculations:")
+            print(f"BCC0 = CT ⊕ SN0 ⊕ SN1 ⊕ SN2 = {ct:02X} ⊕ {sn0:02X} ⊕ {sn1:02X} ⊕ {sn2:02X} = {bcc0:02X}")
+            print(f"BCC1 = SN3 ⊕ SN4 ⊕ SN5 ⊕ SN6 = {sn3:02X} ⊕ {sn4:02X} ⊕ {sn5:02X} ⊕ {sn6:02X} = {bcc1:02X}")
+            print()
+            
+            # Show password calculation
+            print("Password Calculation:")
+            print(f"PWD[0] = SN1 ⊕ SN3 ⊕ 0xAA = {sn1:02X} ⊕ {sn3:02X} ⊕ AA = {sn1 ^ sn3 ^ 0xAA:02X}")
+            print(f"PWD[1] = SN2 ⊕ SN4 ⊕ 0x55 = {sn2:02X} ⊕ {sn4:02X} ⊕ 55 = {sn2 ^ sn4 ^ 0x55:02X}")
+            print(f"PWD[2] = SN3 ⊕ SN5 ⊕ 0xAA = {sn3:02X} ⊕ {sn5:02X} ⊕ AA = {sn3 ^ sn5 ^ 0xAA:02X}")
+            print(f"PWD[3] = SN4 ⊕ SN6 ⊕ 0x55 = {sn4:02X} ⊕ {sn6:02X} ⊕ 55 = {sn4 ^ sn6 ^ 0x55:02X}")
             print()
             
         except ValueError as e:
